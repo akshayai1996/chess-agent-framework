@@ -22,8 +22,6 @@ This repository is both a **playable AI chess platform** and a **proof-of-concep
 
 ## 🌟 Key Technical Innovation: Anti-Hallucination via Symbolic Sync
 
-## 🌟 Key Technical Innovation: Anti-Hallucination via Symbolic Sync
-
 LLMs often struggle with "board vision" and illegal moves. This project solves this using a **Symbolic Verification Layer**:
 
 1. **The Source of Truth**: A Python backend (`sync_game.py`) maintains the board state, generates a real-time `threat_map.md`, and updates `piece_positions.md`.
@@ -59,6 +57,33 @@ graph TD
 
 ---
 
+## ⚠️ NNUE Model Files (Required — Download Separately)
+
+The Stockfish 18 NNUE neural network files are **too large for GitHub** (108MB). They are provided as a release download.
+
+### Download & Setup
+
+1. Go to the [**Releases page**](https://github.com/akshayai1996/chess-agent-framework/releases/latest) and download `nnue-models.zip`.
+2. Extract the zip — you will get two files:
+   ```
+   nn-c288c895ea92.nnue    ← 108 MB (main NNUE model)
+   nn-37f18f62d772.nnue    ← 3.5 MB (secondary model)
+   ```
+3. Place **both files directly in the project root** (same folder as `analyser.html`):
+   ```
+   chess-agent-framework/
+   ├── analyser.html
+   ├── nn-c288c895ea92.nnue   ← here
+   ├── nn-37f18f62d772.nnue   ← here
+   ├── sf_18.js
+   └── ...
+   ```
+4. Start the server: `python server.py` — Stockfish 18 will auto-detect the files.
+
+> ⚠️ **Do not rename the files.** The engine loads them by exact filename hash.
+
+---
+
 ## 💻 Technical Setup
 
 ### Prerequisites
@@ -68,12 +93,13 @@ graph TD
 
 ### Running the Project
 
-1. Start the secure development server:
+1. Download NNUE models (see section above).
+2. Start the secure development server:
    ```bash
    python server.py
    ```
-2. Open your browser to `http://localhost:8000/analyser.html`.
-3. Enable "Stockfish Analysis" to see the NNUE-powered evaluation.
+3. Open your browser to `http://localhost:8000/analyser.html`.
+4. Enable "Stockfish Analysis" to see the NNUE-powered evaluation.
 
 ---
 
