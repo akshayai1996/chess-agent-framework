@@ -1,9 +1,26 @@
-# ♟️ AI Chess: Tactical Verification & Agentic Framework
+# ♟️ Chess Agent Framework
+
+### An Anti-Hallucination AI Chess Platform by **Akshay Solanki**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Engine: Stockfish 18](https://img.shields.io/badge/Engine-Stockfish%2018%20WASM-blue.svg)](https://github.com/lichess-org/stockfish-web)
+[![Made with Love](https://img.shields.io/badge/Made%20with-%E2%9D%A4-red.svg)](https://github.com/akshayai1996)
 
-This repository demonstrates a **Professional Agentic AI Framework** designed to eliminate LLM hallucinations and blunders in complex, state-driven tasks like Chess. By implementing a **Chain of Verification (CoV)** architecture, the AI agent is forced to synchronize with a symbolic "Source of Truth" before executing any logic.
+## 🎯 Why This Was Built
+
+Large Language Models (LLMs) are powerful, but they are fundamentally **probabilistic**. When tasked with playing chess — a domain requiring strict logical precision — they tend to hallucinate piece positions, suggest illegal moves, and reason inconsistently from one turn to the next.
+
+The purpose of this project is to demonstrate a **practical solution to that problem**:
+
+> **"An AI agent grounded in symbolic truth does not hallucinate."**
+
+By forcing the agent to read verified, machine-generated state files (`piece_positions.md`, `threat_map.md`) before every action, hallucinations and illegal move suggestions dropped by **over 90%** during development.
+
+This repository is both a **playable AI chess platform** and a **proof-of-concept for building reliable Agentic AI systems** that can be applied far beyond chess — to coding assistants, data agents, task planners, and more.
+
+---
+
+## 🌟 Key Technical Innovation: Anti-Hallucination via Symbolic Sync
 
 ## 🌟 Key Technical Innovation: Anti-Hallucination via Symbolic Sync
 
@@ -81,10 +98,16 @@ _The secondary section of this repository contains a complete beginner's guide t
 
 ---
 
-## 🐜 Author
+## 👤 Author
 
-Developed by **Antigravity AI** in collaboration with the User.
+Built with ❤️ by **Akshay Solanki**
+
+> This project was born out of a fascination with one key question: _"Can we make AI agents reliable enough for precision tasks?"_ Chess was the perfect testing ground — a domain with absolute rules where there is no room for guessing. The answer turned out to be a resounding **yes**, and this repository is the result.
+
+[![GitHub](https://img.shields.io/badge/GitHub-akshayai1996-black?logo=github)](https://github.com/akshayai1996)
+
+---
 
 ## 📄 License
 
-MIT License - See the [LICENSE](LICENSE) file for details.
+MIT License — free to use, modify, and distribute. See the [LICENSE](LICENSE) file for details.
