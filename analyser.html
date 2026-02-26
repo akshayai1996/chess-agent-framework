@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Chess | WASM Engine Analyser</title>
+    <!-- Removed Tailwind CDN because it breaks under Cross-Origin Isolation headers -->
+    <!-- Chess.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js" crossorigin="anonymous"></script>
+    <style>
+      #debug-log {
+          position: fixed;
+          bottom: 10px;
+          left: 10px;
+          background: rgba(0,0,0,0.8);
+          color: #ff4d4d;
+          padding: 5px 10px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-family: monospace;
+          z-index: 10000;
+          display: none;
+      }
+      
+      /* Base Container */
+      .game-area {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Helvetica, Arial, sans-serif;
+        background-color: #1a1917;
+        color: #bababa;
+        min-height: 100vh;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        overflow-x: hidden;
+      }
+
+      .main-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 1300px;
+        padding: 20px;
+        gap: 24px;
+      }
+
+      @media (min-width: 1024px) {
+        .main-container {
+          flex-direction: row;
+          height: 100vh;
+          max-height: 900px;
+          align-items: flex-start;
+          justify-content: center;
+          overflow: hidden;
+        }
+      }
+
+      /* Board & Eval Bar Container */
+      .game-area {
+        display: flex;
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      /* Evaluation Bar */
+      .eval-bar-container {
+        width: 32px;
+        min-width: 32px;
+        background-color: #333;
+        border-radius: 4px;
+        position: relative;
+        overflow: hidden;
+        display: flex; /* Always visible to show the bar */
+        border: 1px solid #555;
+      }
+
+      #eval-bar-fill {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        height: 50%; /* Default 0.00 */
+        background-color: #fff; /* White's advantage */
+        transition: height 0.5s ease-in-out;
+      }
+
+      .eval-text-overlay {
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 10px;
+        font-weight: bold;
+        color: #000;
+        z-index: 20;
+        text-align: center;
+        width: 100%;
+      }
+
+      .eval-text-bottom {
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 10px;
+        font-weight: bold;
+        color: #fff;
+        z-index: 20;
+        text-align: center;
+        width: 100%;
+      }
+
+      .board-wrapper {
+        background-color: #262421;
+        padding: 10px;
+        border-radius: 4px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      }
+
+      .board-container {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        width: min(85vw, 600px);
+        height: min(85vw, 600px);
+        position: relative;
+      }
+
+      .square {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+      }
+
+      .square.light { background-color: #eeeed2; }
+      .square.dark { background-color: #769656; }
+      .square.highlight { background-color: rgba(246, 246, 130, 0.8) !important; }
+      .square.best-move { background-color: rgba(65, 105, 225, 0.4) !important; border: 2px solid royalblue; }
+
+      /* Board Coordinates */
+      .coordinate {
+        position: absolute;
+        font-size: 10px;
+        font-weight: bold;
+        pointer-events: none;
+        user-select: none;
+        z-index: 5;
+      }
+      .coordinate.file {
+        bottom: 2px;
+        right: 2px;
+      }
+      .coordinate.rank {
+        top: 2px;
+        left: 2px;
+      }
+      .light .coordinate { color: #769656; }
+      .dark .coordinate { color: #eeeed2; }
+
+      .piece {
+        width: 100%;
+        height: 100%;
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-position: center;
+        cursor: pointer;
+        z-index: 10;
+        transition: transform 0.15s ease-out;
+        will-change: transform;
+      }
+      .piece.moving {
+        z-index: 100;
+        pointer-events: none;
+      }
+
+      /* Piece icons */
+      .wK { background-image: url("assets/wK.svg"); }
+      .wQ { background-image: url("assets/wQ.svg"); }
+      .wR { background-image: url("assets/wR.svg"); }
+      .wB { background-image: url("assets/wB.svg"); }
+      .wN { background-image: url("assets/wN.svg"); }
+      .wP { background-image: url("assets/wP.svg"); }
+      .bK { background-image: url("assets/bK.svg"); }
+      .bQ { background-image: url("assets/bQ.svg"); }
+      .bR { background-image: url("assets/bR.svg"); }
+      .bB { background-image: url("assets/bB.svg"); }
+      .bN { background-image: url("assets/bN.svg"); }
+      .bP { background-image: url("assets/bP.svg"); }
+
+      /* Sidebar */
+      .sidebar {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 320px;
+        max-width: 450px;
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+        box-sizing: border-box;
+        padding-right: 4px;
+      }
+
+      .panel {
+        background-color: #262421;
+        border-radius: 4px;
+        padding: 12px;
+        box-sizing: border-box;
+        width: 100%;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 8px;
+        border-top: 1px solid #3c3934;
+        padding-top: 8px;
+      }
+
+      .stat-box {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .stat-label {
+        font-size: 9px;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #a8a8a8;
+        margin-bottom: 2px;
+      }
+
+      .stat-value {
+        font-size: 11px;
+        font-weight: bold;
+        color: #eee;
+        font-family: monospace;
+      }
+
+      .input-area {
+        background-color: #1a1917;
+        border: 1px solid #3c3934;
+        border-radius: 4px;
+        padding: 12px;
+        color: #fff;
+        font-family: monospace;
+        resize: none;
+        box-sizing: border-box;
+        height: 80px;
+        font-size: 13px;
+        width: 100%;
+      }
+
+      /* Engine Visuals */
+      .engine-status {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        padding: 10px;
+        background: #1a1917;
+        border-radius: 4px;
+      }
+
+      .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 44px;
+        height: 22px;
+      }
+
+      .toggle-switch input { opacity: 0; width: 0; height: 0; }
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: #3c3934;
+        transition: .4s;
+        border-radius: 22px;
+      }
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 16px; width: 16px;
+        left: 3px; bottom: 3px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+      }
+      input:checked + .slider { background-color: #81b64c; }
+      input:checked + .slider:before { transform: translateX(22px); }
+
+      .eval-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #fff;
+        text-align: center;
+        background: #131211;
+        padding: 12px;
+        border-radius: 4px;
+        border-left: 4px solid #81b64c;
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #best-move-text {
+        min-height: 32px;
+      }
+
+      /* Move List */
+      .move-history-container {
+        flex: 1;
+        background-color: #262421;
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-height: 200px;
+      }
+      .move-list-header { background: #21201d; padding: 8px 12px; font-weight: bold; color: #fff; }
+      .move-list-content { flex: 1; overflow-y: auto; }
+      .move-row { display: grid; grid-template-columns: 40px 1fr 1fr; font-size: 13px; line-height: 28px; cursor: pointer; }
+      .move-row:nth-child(even) { background-color: #2b2926; }
+      .move-number { color: #a8a8a8; padding-left: 8px; background-color: #2d2b28; border-right: 1px solid #1a1917; }
+      .move-item { color: #ffffff; padding-left: 12px; transition: background 0.1s; }
+      .move-item:hover { background-color: #3c3934; }
+      .active-move { background-color: #4a5c39 !important; color: #ffffff !important; font-weight: bold; box-shadow: inset 4px 0 0 #81b64c; }
+
+      .btn-chess {
+        background-color: #312e2b;
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 4px;
+        font-weight: bold;
+        border-bottom: 3px solid #1f1e1c;
+        width: 100%;
+        margin-top: 8px;
+        transition: 0.1s;
+      }
+      .btn-chess:hover { background-color: #3c3934; }
+      .btn-play { background-color: #81b64c; border-bottom: 3px solid #4d7c2a; }
+      .btn-primary { background-color: #4d94ff; border-bottom: 3px solid #3366cc; }
+      .btn-primary:hover { background-color: #66a3ff; }
+
+      .captured-container {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 2px;
+        min-height: 30px;
+        padding: 4px 10px;
+        align-items: center;
+        margin: 4px 0;
+        border-radius: 4px;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+      
+      #captured-white {
+        background: #eeeed2;
+        border: 1px solid #d4d4aa;
+      }
+      #captured-white .captured-label { color: #4b4b4b; }
+      #captured-white .captured-count { color: #21201d; }
+
+      #captured-black {
+        background: #1a1917;
+        border: 1px solid #3c3934;
+      }
+      #captured-black .captured-label { color: #bababa; }
+      #captured-black .captured-count { color: #ffffff; }
+
+      .captured-label {
+        font-size: 9px;
+        margin-right: 8px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.6;
+        white-space: nowrap;
+        line-height: 22px;
+      }
+      .captured-piece-group {
+        display: inline-flex;
+        align-items: center;
+        margin-right: 4px;
+        flex-shrink: 0;
+      }
+      .captured-piece-mini {
+        width: 22px;
+        height: 22px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        flex-shrink: 0;
+      }
+      .captured-count {
+        font-size: 11px;
+        font-weight: 900;
+        margin-left: -2px;
+        line-height: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="debug-log"></div>
+    <div class="main-container">
+      
+      <!-- Board Area -->
+      <div class="game-area">
+        <!-- Vertical Eval Bar -->
+        <div id="eval-bar" class="eval-bar-container">
+            <div id="eval-bar-fill"></div>
+            <div id="eval-text-white" class="eval-text-bottom">0.00</div>
+            <div id="eval-text-black" class="eval-text-overlay"></div>
+        </div>
+
+        <div class="board-wrapper">
+          <div id="board" class="board-container"></div>
+          
+          <!-- Captured Pieces Bars -->
+          <div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
+            <div id="captured-white" class="captured-container" style="margin:0;">
+               <span class="captured-label">White</span>
+               <div id="white-captured-list" style="display:flex; flex-wrap:wrap; align-items:center;"></div>
+            </div>
+            <div id="captured-black" class="captured-container" style="margin:0;">
+               <span class="captured-label">Black</span>
+               <div id="black-captured-list" style="display:flex; flex-wrap:wrap; align-items:center;"></div>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding:0 8px;">
+            <span id="game-status" style="font-size:12px; font-weight:bold; color:#81b64c;">READY</span>
+            <div id="turn-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: #fff;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis Sidebar -->
+      <div class="sidebar">
+        
+        <div class="panel">
+          <div class="engine-telemetry-container">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <span style="color:#ffffff; font-weight:bold; font-size:12px; letter-spacing:1px; text-transform:uppercase; opacity:0.9;">Stockfish Analysis</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="engine-toggle" onchange="toggleEngine()">
+                <span class="slider"></span>
+              </label>
+            </div>
+            
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; background-color:#131211; padding:8px; border-radius:4px; border:1px solid #3c3934;">
+              <div id="status-indicator" style="width:8px; height:8px; border-radius:50%; background-color:#eab308;"></div>
+              <span id="engine-info" style="font-size:10px; font-weight:bold; color:#cbd5e1;">Disconnected</span>
+              <select id="engine-backend" style="margin-left:auto; font-size:10px; background-color:#262421; color:#ffffff; border:1px solid #3c3934; border-radius:3px; padding:2px 4px; outline:none;" onchange="if(stockfish){toggleEngine();document.getElementById('engine-toggle').checked=false;}">
+                <option value="cdn" selected>Stockfish 10 ✓</option>
+                <option value="local">Stockfish 18 WASM</option>
+              </select>
+            </div>
+
+            <div class="stats-grid">
+              <div class="stat-box">
+                <span class="stat-label">Evaluation</span>
+                <span id="eval-display" class="stat-value" style="color:#f59e0b; font-size:14px;">0.00</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">Progress</span>
+                <div class="stat-value"><span id="engine-depth">0</span> / ∞</div>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">Speed</span>
+                <span id="engine-nps" class="stat-value">0 Lakh/s</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-label">Model</span>
+                <span id="engine-name" class="stat-value" style="color:#cbd5e1;">Stockfish 17.1</span>
+              </div>
+            </div>
+
+            <div style="background-color:#131211; height:6px; border-radius:3px; overflow:hidden; border:1px solid #3c3934; margin-top:8px;">
+              <div id="depth-bar" style="background-color:#f59e0b; height:100%; width:0%; transition:width 0.3s ease;"></div>
+            </div>
+
+            <div id="best-move-text" style="display:none; font-size:11px; font-family:monospace; color:#22c55e; margin-top:12px; padding:8px; background-color:#131211; border-radius:4px; border:1px solid #3c3934; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">Ready</div>
+            
+            <div id="fen-debug" style="font-size:9px; color:#fff; word-break:break-all; margin-top:8px; font-family:monospace; background: rgba(0,0,0,0.8); padding: 4px; border: 1px dashed #444; display:block;">Evaluating...</div>
+            
+            <div style="display:flex; gap:8px; margin-top:8px;">
+                <button onclick="runAnalysis()" class="btn-chess" style="margin-top:0; padding:4px 8px; font-size:10px; flex:1;">RE-ANALYZE</button>
+                <button onclick="navigator.clipboard.writeText(game.fen())" class="btn-chess" style="margin-top:0; padding:4px 8px; font-size:10px; flex:1;">COPY FEN</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="padding:12px;">
+          <textarea id="pgn-input" placeholder="Paste PGN here..." class="input-area" style="margin-bottom:8px; height:80px;"></textarea>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <button onclick="loadPGN()" class="btn-chess btn-play" style="margin-top:0; padding:8px 12px; font-size:12px;">UPDATE BOARD</button>
+            <button onclick="copyPGN()" class="btn-chess" style="margin-top:0; padding:8px 12px; font-size:12px;">COPY PGN</button>
+          </div>
+        </div>
+
+        <div class="panel" style="padding:8px;">
+          <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px;">
+            <button onclick="goToStart()" class="btn-chess" style="margin-top:0; padding:6px 0; display:flex; justify-content:center; align-items:center;" title="Initial">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+            </button>
+            <button onclick="stepBackward()" class="btn-chess" style="margin-top:0; padding:6px 0; display:flex; justify-content:center; align-items:center;" title="Previous Move">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+            </button>
+            <button id="play-btn" onclick="togglePlay()" class="btn-chess btn-primary" style="margin-top:0; padding:6px 0; display:flex; justify-content:center; align-items:center;" title="Play/Pause">
+              <svg id="play-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button onclick="stepForward()" class="btn-chess" style="margin-top:0; padding:6px 0; display:flex; justify-content:center; align-items:center;" title="Next Move">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </button>
+            <button onclick="goToEnd()" class="btn-chess" style="margin-top:0; padding:6px 0; display:flex; justify-content:center; align-items:center;" title="End">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-12.5 12l8.5-6-8.5-6z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="move-history-container">
+          <div class="move-list-header">Move History</div>
+          <div id="move-list" class="move-list-content"></div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- External Engine Logic -->
+    <script src="engine.js"></script>
+
+    <script>
+      // Global error handler
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        const log = document.getElementById('debug-log');
+        if (log) {
+          log.style.display = 'block';
+          log.innerText = `Error: ${msg} (Line: ${lineNo})`;
+        }
+        return false;
+      };
+
+      const boardEl = document.getElementById("board");
+      const pgnInput = document.getElementById("pgn-input");
+      const statusEl = document.getElementById("game-status");
+      const moveListEl = document.getElementById("move-list");
+      const playBtn = document.getElementById("play-btn");
+      const engineToggle = document.getElementById("engine-toggle");
+      const evalDisplay = document.getElementById("eval-display");
+      const evalBar = document.getElementById("eval-bar");
+      const evalBarFill = document.getElementById("eval-bar-fill");
+      const engineInfo = document.getElementById("engine-info");
+      const indicatorEl = document.getElementById("status-indicator");
+      const engineNameEl = document.getElementById("engine-name");
+      const engineDepthEl = document.getElementById("engine-depth");
+      const depthBarEl = document.getElementById("depth-bar");
+      const engineNpsEl = document.getElementById("engine-nps");
+
+      let game;
+      try { game = new Chess(); } catch(e) { throw new Error("Chess library failed to load."); }
+      
+      let history = [];
+      let currentStep = -1;
+      let playInterval = null;
+      let isAutoPlaying = false;
+
+      function highlightSquare(pos, className) {
+        const sq = document.querySelector(`.square[data-pos='${pos}']`);
+        if (sq) sq.classList.add(className);
+      }
+
+      function animateMove(from, to, callback) {
+        const fromSq = document.querySelector(`.square[data-pos='${from}']`);
+        const toSq = document.querySelector(`.square[data-pos='${to}']`);
+        const piece = fromSq ? fromSq.querySelector(".piece") : null;
+        if (!piece || !toSq) return callback?.();
+        const fRect = fromSq.getBoundingClientRect();
+        const tRect = toSq.getBoundingClientRect();
+        piece.style.transition = "transform 0.2s ease-in-out";
+        piece.style.transform = `translate(${tRect.left - fRect.left}px, ${tRect.top - fRect.top}px)`;
+        piece.style.zIndex = "100";
+        setTimeout(() => {
+          piece.style.transition = ""; piece.style.transform = ""; piece.style.zIndex = "";
+          callback?.();
+        }, 200);
+      }
+
+
+      function initBoard() {
+        boardEl.innerHTML = "";
+        for (let i=0; i<64; i++) {
+          const sq = document.createElement("div"), r = Math.floor(i/8), c = i%8, pos = String.fromCharCode(97+c)+(8-r);
+          sq.classList.add("square", (r+c)%2===0 ? 'light' : 'dark'); sq.dataset.pos = pos;
+          sq.ondragover = (e)=>e.preventDefault(); sq.ondrop = handleDrop;
+          if (c===0) { const l = document.createElement("div"); l.className="coordinate rank"; l.innerText = 8-r; sq.appendChild(l); }
+          if (r===7) { const l = document.createElement("div"); l.className="coordinate file"; l.innerText = String.fromCharCode(97+c); sq.appendChild(l); }
+          boardEl.appendChild(sq);
+        }
+        renderBoard();
+      }
+
+      function renderBoard(triggerEval=true) {
+        const pos = game.board(), sqs = boardEl.querySelectorAll(".square");
+        sqs.forEach((sq, i) => {
+          sq.querySelectorAll(':not(.coordinate)').forEach(el => el.remove());
+          sq.classList.remove("highlight", "best-move");
+          const r = Math.floor(i/8), c = i%8, p = pos[r][c];
+          if (p) {
+            const e = document.createElement("div"); e.classList.add("piece", p.color+p.type.toUpperCase()); e.draggable=true;
+            e.dataset.from = sq.dataset.pos; e.ondragstart = (ev)=>ev.dataTransfer.setData("from", ev.target.dataset.from);
+            sq.appendChild(e);
+          }
+        });
+        const h = game.history({verbose:true});
+        if (h.length > 0) { const l = h[h.length-1]; highlightSquare(l.from,"highlight"); highlightSquare(l.to,"highlight"); }
+        updateStatus(); updateCapturedPieces();
+        if (currentStep === history.length-1) pgnInput.value = game.pgn();
+        if (engineEnabled && triggerEval && !isAutoPlaying) runAnalysis();
+      }
+
+      function updateCapturedPieces() {
+        const board = game.board(); let init = { w:{p:8,n:2,b:2,r:2,q:1}, b:{p:8,n:2,b:2,r:2,q:1} };
+        for (let r=0; r<8; r++) for (let c=0; c<8; c++) { let p = board[r][c]; if (p) init[p.color][p.type]--; }
+        renderCapturedBar("white-captured-list", init.b, 'b'); renderCapturedBar("black-captured-list", init.w, 'w');
+      }
+
+      function renderCapturedBar(id, counts, color) {
+        const list = document.getElementById(id); if (!list) return;
+        list.innerHTML = "";
+        ['q','r','b','n','p'].forEach(t => {
+          let c = counts[t]; if (c > 0) {
+            const w = document.createElement("div"); w.className = "captured-piece-group";
+            const i = document.createElement("div"); i.className = `captured-piece-mini ${color}${t.toUpperCase()}`;
+            w.appendChild(i); if (c>1) { const s = document.createElement("span"); s.className="captured-count"; s.innerText="×"+c; w.appendChild(s); }
+            list.appendChild(w);
+          }
+        });
+      }
+
+      function handleDrop(e) {
+        e.preventDefault(); const from = e.dataTransfer.getData("from");
+        const to = e.target.dataset.pos || e.target.parentElement.dataset.pos;
+        if (game.move({from, to, promotion:'q'})) {
+          history = game.history(); currentStep = history.length-1; renderBoard(); renderMoveList(); highlightActiveMove();
+        }
+      }
+
+      function loadPGN() {
+        const input = pgnInput.value.trim();
+        if (!input) return;
+
+        // FEN Detection: usually starts/contains pieces and slash
+        if (input.split('/').length >= 4) {
+            let vG = new Chess();
+            if (vG.load(input)) {
+                game = vG;
+                history = [];
+                currentStep = -1;
+                renderBoard();
+                renderMoveList();
+                statusEl.innerText = "FEN LOADED";
+                statusEl.style.color = "#81b64c";
+                return;
+            }
+        }
+
+        let validGame = new Chess();
+        let validHistory = [];
+        const mvs = input.replace(/\[.*?\]/g, '').replace(/\n/g, ' ').trim().split(/\s+/).filter(m => !m.match(/^\d+\.?\.?$/));
+        
+        let errorFound = false;
+        let errorMessage = "";
+        for (let m of mvs) {
+            if (validGame.move(m)) validHistory.push(m);
+            else { errorMessage = "Illegal: " + m; errorFound = true; break; }
+        }
+
+        if (!errorFound) {
+            isAutoPlaying = true; game = new Chess(); history = validHistory; currentStep = -1; renderBoard(); renderMoveList(); highlightActiveMove(); stopPlay(); startPlay(300);
+        } else {
+            statusEl.innerText = errorMessage; statusEl.style.color = "#ff4d4d";
+        }
+      }
+
+      function stepForward() {
+        if (currentStep < history.length-1) {
+          const m = game.move(history[++currentStep]);
+          if (m) animateMove(m.from, m.to, ()=> { renderBoard(); highlightActiveMove(); });
+          else { renderBoard(); highlightActiveMove(); }
+        } else { stopPlay(); if (engineEnabled) runAnalysis(); }
+      }
+
+      function stepBackward() {
+        if (currentStep >= 0) { let m = game.history({verbose:true}).pop(); game.undo(); currentStep--; if (m) animateMove(m.to, m.from, ()=>{renderBoard(); highlightActiveMove();}); else {renderBoard(); highlightActiveMove();} }
+      }
+
+      function renderMoveList() {
+        moveListEl.innerHTML = ""; for (let i=0; i<history.length; i+=2) {
+          const row = document.createElement("div"); row.className="move-row";
+          row.innerHTML = `<div class="move-number">${(i/2)+1}</div><div class="move-item" id="move-${i}" onclick="jumpToStep(${i})">${history[i]}</div><div class="move-item" id="move-${i+1}" onclick="jumpToStep(${i+1})">${history[i+1] || ''}</div>`;
+          moveListEl.appendChild(row);
+        }
+      }
+
+      function jumpToStep(s) { game.reset(); for (let i=0; i<=s; i++) game.move(history[i]); currentStep=s; renderBoard(); highlightActiveMove(); stopPlay(); }
+      function highlightActiveMove() {
+        document.querySelectorAll(".active-move").forEach(el => el.classList.remove("active-move"));
+        const active = document.getElementById(`move-${currentStep}`); if (active) { active.classList.add("active-move"); }
+        const container = moveListEl;
+        if (active) container.scrollTo({ top: active.offsetTop - container.offsetHeight/2, behavior: 'smooth' });
+      }
+
+      function togglePlay() { if (playInterval) stopPlay(); else startPlay(800); }
+      function startPlay(s=800) { if (currentStep >= history.length-1) { game.reset(); currentStep=-1;} isAutoPlaying=true; document.getElementById("play-icon").innerHTML='<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'; playInterval=setInterval(stepForward, s); }
+      function stopPlay() { clearInterval(playInterval); playInterval=null; isAutoPlaying=false; document.getElementById("play-icon").innerHTML='<path d="M8 5v14l11-7z"/>'; if (engineEnabled) runAnalysis(); }
+      function updateStatus() { statusEl.innerText = game.in_checkmate() ? "CHECKMATE" : (game.in_draw() ? "DRAW" : "IN PROGRESS"); document.getElementById("turn-indicator").style.backgroundColor = game.turn() === "w" ? "#fff" : "#000"; }
+      function goToStart() { game.reset(); currentStep = -1; renderBoard(); highlightActiveMove(); stopPlay(); }
+      function goToEnd() { stopPlay(); game.reset(); for (let m of history) game.move(m); currentStep = history.length-1; renderBoard(); highlightActiveMove(); }
+      function clearInput() { pgnInput.value = ""; moveListEl.innerHTML = ""; goToStart(); }
+      function copyPGN() { navigator.clipboard.writeText(game.pgn()).then(()=>{ let t = statusEl.innerText; statusEl.innerText="COPIED!"; setTimeout(()=>statusEl.innerText=t, 1000); }); }
+
+      initBoard();
+      initEngine();
+    </script>
+  </body>
+</html>

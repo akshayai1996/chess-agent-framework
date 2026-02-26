@@ -1,0 +1,15 @@
+# Large NNUE model files (too large for GitHub - download separately)
+nn-c288c895ea92.nnue
+nn-37f18f62d772.nnue
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
